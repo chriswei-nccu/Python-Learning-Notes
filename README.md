@@ -1,1 +1,1 @@
-# Udemy-Python-
+# 這裡主要是存放自己整理的 for Python 全攻略課程的心得筆記分享。
