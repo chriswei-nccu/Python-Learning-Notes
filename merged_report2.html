@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vibe Coding 檔案匯整</title>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, "Microsoft JhengHei", sans-serif;
+            max-width: 1000px;
+            margin: 30px auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        h1 {
+            color: #222;
+            margin-bottom: 20px;
+        }
+
+        .box {
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 20px;
+            background: #fafafa;
+            margin-bottom: 20px;
+        }
+
+        button {
+            padding: 10px 18px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background: #1976d2;
+            color: white;
+            margin-top: 10px;
+            margin-right: 10px;
+        }
+
+        button:hover {
+            background: #125aa0;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 15px;
+            background: white;
+        }
+
+        th, td {
+            border: 1px solid #ccc;
+            padding: 8px;
+            text-align: left;
+            font-size: 14px;
+        }
+
+        th {
+            background: #f0f0f0;
+        }
+
+        .info {
+            margin-top: 15px;
+            color: #333;
+        }
+
+        .small {
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Vibe Coding 檔案匯整</h1>
+
+    <div class="box">
+        <input type="file" id="fileInput" multiple accept=".xlsx,.xls" />
+        <br>
+        <button onclick="mergeFiles()">合併 Excel 檔案</button>
+        <button onclick="downloadMergedFile()" id="downloadBtn" disabled>下載合併檔案</button>
+
+        <div class="info" id="status">請先選取多個 Excel 檔案。</div>
+        <div class="small">說明：系統會讀取每個 Excel 的第一個工作表，並自動加入「來源檔名」欄位。</div>
+    </div>
+
+    <div class="box">
+        <h2>合併結果（前 5 筆）</h2>
+        <div id="preview">尚未有資料。</div>
+    </div>
+
+    <script>
+        let mergedData = [];
+        let mergedWorkbook = null;
+
+        function mergeFiles() {
+            const input = document.getElementById("fileInput");
+            const files = input.files;
+            const status = document.getElementById("status");
+            const preview = document.getElementById("preview");
+            const downloadBtn = document.getElementById("downloadBtn");
+
+            mergedData = [];
+            mergedWorkbook = null;
+            preview.innerHTML = "處理中...";
+            downloadBtn.disabled = true;
+
+            if (!files || files.length === 0) {
+                status.textContent = "沒有選取任何檔案。";
+                preview.innerHTML = "尚未有資料。";
+                return;
+            }
+
+            let processedCount = 0;
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                const reader = new FileReader();
+
+                reader.onload = function(e) {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: "array" });
+
+                        const firstSheetName = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[firstSheetName];
+
+                        let jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+                        jsonData = jsonData.map(row => {
+                            row["來源檔名"] = file.name;
+                            return row;
+                        });
+
+                        mergedData = mergedData.concat(jsonData);
+                    } catch (error) {
+                        console.error("讀取失敗：", file.name, error);
+                    }
+
+                    processedCount++;
+
+                    if (processedCount === files.length) {
+                        if (mergedData.length === 0) {
+                            status.textContent = "所有檔案都無法讀取，或檔案內沒有資料。";
+                            preview.innerHTML = "尚未有資料。";
+                            return;
+                        }
+
+                        status.textContent = `合併完成，共 ${files.length} 個檔案，總筆數 ${mergedData.length} 筆。`;
+
+                        showPreview(mergedData);
+
+                        const ws = XLSX.utils.json_to_sheet(mergedData);
+                        const wb = XLSX.utils.book_new();
+                        XLSX.utils.book_append_sheet(wb, ws, "MergedData");
+                        mergedWorkbook = wb;
+
+                        downloadBtn.disabled = false;
+                    }
+                };
+
+                reader.readAsArrayBuffer(file);
+            }
+        }
+
+        function showPreview(data) {
+            const preview = document.getElementById("preview");
+
+            if (!data || data.length === 0) {
+                preview.innerHTML = "沒有可顯示的資料。";
+                return;
+            }
+
+            const firstFive = data.slice(0, 5);
+            const columns = Array.from(
+                firstFive.reduce((set, row) => {
+                    Object.keys(row).forEach(key => set.add(key));
+                    return set;
+                }, new Set())
+            );
+
+            let html = "<table><thead><tr>";
+            columns.forEach(col => {
+                html += `<th>${escapeHtml(col)}</th>`;
+            });
+            html += "</tr></thead><tbody>";
+
+            firstFive.forEach(row => {
+                html += "<tr>";
+                columns.forEach(col => {
+                    html += `<td>${escapeHtml(row[col] ?? "")}</td>`;
+                });
+                html += "</tr>";
+            });
+
+            html += "</tbody></table>";
+            preview.innerHTML = html;
+        }
+
+        function downloadMergedFile() {
+            if (!mergedWorkbook) {
+                alert("目前沒有可下載的合併檔案。");
+                return;
+            }
+
+            XLSX.writeFile(mergedWorkbook, "merged_result.xlsx");
+        }
+
+        function escapeHtml(text) {
+            return String(text)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>

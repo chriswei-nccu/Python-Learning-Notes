@@ -1,0 +1,174 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Vibe Coding 檔案匯整</title>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+
+<style>
+body{
+    font-family: Arial;
+    padding:40px;
+    background:#f5f5f5;
+}
+
+h1{
+    color:#2c3e50;
+}
+
+.container{
+    background:white;
+    padding:30px;
+    border-radius:10px;
+    box-shadow:0px 0px 10px rgba(0,0,0,0.1);
+}
+
+button{
+    padding:10px 20px;
+    background:#3498db;
+    color:white;
+    border:none;
+    border-radius:5px;
+    cursor:pointer;
+}
+
+button:hover{
+    background:#2980b9;
+}
+
+table{
+    border-collapse: collapse;
+    margin-top:20px;
+}
+
+td,th{
+    border:1px solid #ccc;
+    padding:8px;
+}
+</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>Vibe Coding 檔案匯整</h1>
+
+<p>請選擇多個 Excel 檔案</p>
+
+<input type="file" id="excelFiles" multiple />
+
+<br><br>
+
+<button onclick="mergeExcel()">合併檔案</button>
+
+<button onclick="downloadExcel()">下載合併結果</button>
+
+<h3>合併結果 (前5筆)</h3>
+
+<table id="previewTable"></table>
+
+</div>
+
+<script>
+
+let mergedData = []
+
+function mergeExcel(){
+
+    const files = document.getElementById('excelFiles').files
+
+    if(files.length === 0){
+        alert("請選擇Excel檔案")
+        return
+    }
+
+    mergedData = []
+
+    let filesRead = 0
+
+    for(let file of files){
+
+        const reader = new FileReader()
+
+        reader.onload = function(e){
+
+            const data = new Uint8Array(e.target.result)
+
+            const workbook = XLSX.read(data, {type:'array'})
+
+            const sheet = workbook.Sheets[workbook.SheetNames[0]]
+
+            const json = XLSX.utils.sheet_to_json(sheet)
+
+            json.forEach(row=>{
+                row["來源檔案"] = file.name
+                mergedData.push(row)
+            })
+
+            filesRead++
+
+            if(filesRead === files.length){
+                showPreview()
+            }
+        }
+
+        reader.readAsArrayBuffer(file)
+    }
+}
+
+function showPreview(){
+
+    const table = document.getElementById("previewTable")
+
+    table.innerHTML=""
+
+    if(mergedData.length===0) return
+
+    const headers = Object.keys(mergedData[0])
+
+    let headerRow="<tr>"
+    headers.forEach(h=>{
+        headerRow += "<th>"+h+"</th>"
+    })
+    headerRow += "</tr>"
+
+    table.innerHTML += headerRow
+
+    mergedData.slice(0,5).forEach(row=>{
+
+        let tr="<tr>"
+
+        headers.forEach(h=>{
+            tr += "<td>"+(row[h]||"")+"</td>"
+        })
+
+        tr+="</tr>"
+
+        table.innerHTML+=tr
+    })
+}
+
+function downloadExcel(){
+
+    if(mergedData.length===0){
+        alert("沒有資料可下載")
+        return
+    }
+
+    const worksheet = XLSX.utils.json_to_sheet(mergedData)
+
+    const workbook = XLSX.utils.book_new()
+
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Merged")
+
+    XLSX.writeFile(workbook, "merged_result.xlsx")
+}
+
+</script>
+
+</body>
+</html>
